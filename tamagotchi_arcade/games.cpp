@@ -172,6 +172,7 @@ static int hlPot, hlStreak;
 static char hlMsg[24];
 static bool hlShowMsg;
 static unsigned long hlMsgUntil;
+static const int HL_ANTE = 5;
 
 static void hlBegin() {
   hlRank = drawRank();
@@ -196,11 +197,17 @@ void highLowCashOut() {
 
 static bool hlHandleEvent(ButtonEvent evt) {
   if (evt != EVT_L_PRESS && evt != EVT_R_PRESS) return false;
+  if (game.coins < (uint32_t)HL_ANTE) {
+    toastShow("Not enough coins", nullptr, Pal::RED_ACCENT);
+    return false;
+  }
+  addCoins(-HL_ANTE);
   bool guessHigher = (evt == EVT_R_PRESS);
   int nextRank = drawRank();
   int nextSuit = drawSuit();
 
   if (nextRank == hlRank) {
+    addCoins(HL_ANTE); // push: refund the ante, matching Blackjack's push handling
     strcpy(hlMsg, "PUSH - same rank");
   } else {
     bool correct = guessHigher ? (nextRank > hlRank) : (nextRank < hlRank);
@@ -212,8 +219,8 @@ static bool hlHandleEvent(ButtonEvent evt) {
       if (hlStreak >= 5) unlockAchievement(ACH_HIGHLOW_STREAK5);
       snprintf(hlMsg, sizeof(hlMsg), "Correct! Pot: %dc", hlPot);
     } else {
-      addXP(5);
-      bumpHappiness(5);
+      // Wrong: the ante already spent above is gone, and so is the
+      // accumulated pot - no XP/happiness for a losing guess anymore.
       reportHighScore(GAME_ID_HIGHLOW, hlStreak);
       snprintf(hlMsg, sizeof(hlMsg), "Wrong! Lost %dc", hlPot);
       hlStreak = 0;
@@ -260,6 +267,7 @@ static int tbTargetCenter, tbTargetHalfWidth;
 static char tbMsg[24];
 static int tbTrackTop, tbTrackBottom;
 static bool tbSuppressNextRelease = false;
+static const int TB_ANTE = 5;
 
 static void tbBegin() {
   tbState = TB_RUNNING;
@@ -289,14 +297,18 @@ static bool tbHandleEvent(ButtonEvent evt) {
     else if (dist <= tbTargetHalfWidth) { coins = 5; rank = "OK"; }
     else { coins = 0; rank = "MISS"; }
 
-    addCoins(coins);
+    // A flat ante is baked into the net payout instead of charged upfront:
+    // PERFECT +25, GREAT +10, OK breakeven, MISS -5. addCoins() already
+    // clamps at 0, so a broke player can't go negative - they just net less.
+    int net = coins - TB_ANTE;
+    addCoins(net);
     addXP(coins > 0 ? 12 : 8);
     bumpHappiness(5);
     if (coins > 0) {
       reportHighScore(GAME_ID_TIMING, coins);
       particlesSpawnBurst(SCREEN_W / 2, tbTargetCenter, Pal::GOLD, coins / 3);
     }
-    snprintf(tbMsg, sizeof(tbMsg), "%s +%dc", rank, coins);
+    snprintf(tbMsg, sizeof(tbMsg), "%s %+dc", rank, net);
     markSaveDirty();
     checkAchievements();
     tbSuppressNextRelease = true;
@@ -382,13 +394,13 @@ static void slotSettle() {
   int winnings = 0;
   if (a == b && b == c) {
     winnings = SLOT_WAGER * SLOT_PAYOUT[a];
-    if (!slotAutoMode) winnings += 10;
+    if (!slotAutoMode) winnings += 5;
     snprintf(slotMsg, sizeof(slotMsg), "JACKPOT! +%dc", winnings);
     if (a == 3) unlockAchievement(ACH_SLOT_JACKPOT); // triple gold
     particlesSpawnBurst(SCREEN_W / 2, UI_CONTENT_Y + 90, Pal::GOLD, 14);
   } else if (a == b || b == c || a == c) {
     int pairSymbol = (a == b) ? a : (b == c) ? b : c;
-    winnings = 20 + pairSymbol * 6 + (!slotAutoMode ? 5 : 0);
+    winnings = 6 + pairSymbol * 2 + (!slotAutoMode ? 2 : 0);
     snprintf(slotMsg, sizeof(slotMsg), "Pair! +%dc", winnings);
   } else {
     snprintf(slotMsg, sizeof(slotMsg), "No match");

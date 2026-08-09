@@ -804,7 +804,7 @@ void drawCard(TFT_eSprite &spr, int x, int y, int rank, int suit, bool faceDown)
 // ---------------------------------------------------------------------------
 // Slot machine symbols
 // ---------------------------------------------------------------------------
-const int SLOT_PAYOUT[SLOT_SYMBOL_COUNT] = { 5, 7, 9, 12, 18, 30 };
+const int SLOT_PAYOUT[SLOT_SYMBOL_COUNT] = { 6, 9, 12, 16, 22, 35 };
 
 static const char *SYM_CHERRY[] = {
   "..oo...oo..",

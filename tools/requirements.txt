@@ -1,0 +1,3 @@
+# Image.Resampling and Image.Quantize.MEDIANCUT were added in Pillow 9.1;
+# older Pillow raises AttributeError in the sprite/asset generators.
+Pillow>=9.1

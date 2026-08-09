@@ -98,7 +98,10 @@ static bool bjHandleEvent(ButtonEvent evt) {
   switch (bjState) {
     case BJ_BET:
       if (evt == EVT_L_PRESS) bjWagerIdx = (bjWagerIdx + 1) % WAGER_COUNT;
-      else if (evt == EVT_R_PRESS && (uint32_t)WAGER_OPTIONS[bjWagerIdx] <= game.coins) bjStartRound();
+      else if (evt == EVT_R_PRESS) {
+        if ((uint32_t)WAGER_OPTIONS[bjWagerIdx] <= game.coins) bjStartRound();
+        else toastShow("Not enough coins", nullptr, Pal::RED_ACCENT);
+      }
       break;
     case BJ_PLAYING:
       if (evt == EVT_L_PRESS) {
@@ -363,7 +366,10 @@ static void slotBegin() {
 }
 
 static void slotSpin() {
-  if (game.coins < (uint32_t)SLOT_WAGER) return;
+  if (game.coins < (uint32_t)SLOT_WAGER) {
+    toastShow("Not enough coins", nullptr, Pal::RED_ACCENT);
+    return;
+  }
   addCoins(-SLOT_WAGER);
   slotState = SLOT_SPINNING;
   for (int i = 0; i < 3; i++) { reelStopped[i] = false; reelOffset[i] = 0; }

@@ -2,6 +2,7 @@
 #include <nvs_flash.h>
 #include "save.h"
 #include "gfx.h"
+#include "art.h"
 
 static Preferences prefs;
 static const char *NS = "tama";
@@ -28,6 +29,64 @@ static void applyDefaults() {
   game.achievements = 0;
   game.created = false; // brand-new save: character creation should run
   game.furColor = 0;
+}
+
+// CRC32 (standard reflected polynomial) over exactly the fields saveNow()
+// persists, so a load can detect that a value was corrupted rather than
+// trusting whatever bytes NVS returned. Bit-by-bit rather than table-driven
+// since the dataset is ~60 bytes and this runs at most once per save/load.
+static uint32_t computeCrc() {
+  uint32_t crc = 0xFFFFFFFF;
+  auto feed = [&](const void *p, size_t n) {
+    const uint8_t *b = (const uint8_t *)p;
+    for (size_t i = 0; i < n; i++) {
+      crc ^= b[i];
+      for (int bit = 0; bit < 8; bit++)
+        crc = (crc >> 1) ^ (0xEDB88320 & (~(crc & 1) + 1));
+    }
+  };
+  feed(&game.coins, sizeof(game.coins));
+  feed(&game.xp, sizeof(game.xp));
+  feed(&game.level, sizeof(game.level));
+  feed(game.owned, sizeof(game.owned));
+  feed(game.equipped, sizeof(game.equipped));
+  feed(&game.happiness, sizeof(game.happiness));
+  feed(&game.totalPlaySeconds, sizeof(game.totalPlaySeconds));
+  feed(game.highScores, sizeof(game.highScores));
+  feed(&game.achievements, sizeof(game.achievements));
+  feed(&game.created, sizeof(game.created));
+  feed(&game.furColor, sizeof(game.furColor));
+  return crc ^ 0xFFFFFFFF;
+}
+
+static int categoryCount(int cat) {
+  switch (cat) {
+    case CAT_BACKGROUND: return BACKGROUND_COUNT;
+    case CAT_HAT: return HAT_COUNT;
+    case CAT_ACCESSORY: return ACCESSORY_COUNT;
+    case CAT_PATTERN: return PATTERN_COUNT;
+    default: return 1;
+  }
+}
+
+// Defense-in-depth independent of the CRC check above: even data that
+// passes CRC (or predates it) gets every field clamped into the range its
+// consumers expect, so a future render-path change can never regress into
+// trusting an unchecked index again. Selector fields (equipped/furColor)
+// reset to their "None"/default value, matching the existing v4-migration
+// convention below; magnitude fields (level/happiness) clamp to their
+// boundary, matching bumpHappiness()'s existing style.
+static void clampLoadedData() {
+  if (game.level < 1) game.level = 1;
+  if (game.level > 999) game.level = 999;
+  if (game.happiness > 100) game.happiness = 100;
+  if (game.furColor >= FUR_COLOR_COUNT) game.furColor = 0;
+  for (int i = 0; i < CAT_COUNT; i++) {
+    int count = categoryCount(i);
+    if (game.equipped[i] < 0 || game.equipped[i] >= count) game.equipped[i] = 0;
+    uint32_t validBits = (count >= 32) ? 0xFFFFFFFFu : ((1UL << count) - 1);
+    game.owned[i] &= validBits;
+  }
 }
 
 void saveBegin() {
@@ -87,6 +146,19 @@ void saveBegin() {
   game.created = prefs.getBool("created", true);
   game.furColor = prefs.getUChar("furcolor", 0);
 
+  // Saves written before this check existed have no "crc" key at all -
+  // isKey() lets us skip the check for those instead of wrongly flagging
+  // every pre-existing save as corrupted. A key that exists and mismatches
+  // means the bytes actually changed since they were written.
+  if (prefs.isKey("crc") && prefs.getUInt("crc", 0) != computeCrc()) {
+    Serial.println("Save data failed CRC check - resetting to defaults.");
+    applyDefaults();
+    toastShow("Save corrupted", "Progress was reset", Pal::RED_ACCENT);
+    saveNow();
+    prefs.putUChar("ver", SAVE_SCHEMA_VERSION);
+    return;
+  }
+
   uint8_t savedVer = prefs.getUChar("ver", 1);
   if (savedVer < 4) {
     // v4 removed the CAT_COLOR category and shifted every category after it
@@ -99,6 +171,7 @@ void saveBegin() {
       game.equipped[i] = 0;
     }
   }
+  clampLoadedData();
   if (savedVer < SAVE_SCHEMA_VERSION) {
     prefs.putUChar("ver", SAVE_SCHEMA_VERSION);
     saveNow(); // persist the new keys/realigned categories immediately
@@ -127,6 +200,7 @@ void saveNow() {
   prefs.putUInt("ach", game.achievements);
   prefs.putBool("created", game.created);
   prefs.putUChar("furcolor", game.furColor);
+  prefs.putUInt("crc", computeCrc());
 }
 
 static bool dirty = false;

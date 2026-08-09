@@ -256,14 +256,15 @@ static unsigned long tbLastMs;
 static int tbTargetCenter, tbTargetHalfWidth;
 static char tbMsg[24];
 static int tbTrackTop, tbTrackBottom;
+static bool tbSuppressNextRelease = false;
 
 static void tbBegin() {
   tbState = TB_RUNNING;
+  tbSuppressNextRelease = false;
   tbTrackTop = UI_CONTENT_Y + 20;
-  // Leave enough room below the track for the size-2 result message
-  // (~16px tall) drawn at tbTrackBottom + 8 in tbRender() - a 20px margin
-  // let it spill into the hint bar; 36px keeps it inside the content area.
-  tbTrackBottom = SCREEN_H - UI_BOTTOM_H - 36;
+  // Leave enough room below the track for the size-1 result message (~8px
+  // tall) drawn at tbTrackBottom + 6 in tbRender().
+  tbTrackBottom = SCREEN_H - UI_BOTTOM_H - 20;
   tbPos = tbTrackTop;
   tbSpeed = 90.0f + game.level * 4.0f;
   tbLastMs = millis();
@@ -272,7 +273,11 @@ static void tbBegin() {
 }
 
 static bool tbHandleEvent(ButtonEvent evt) {
-  if (tbState == TB_RUNNING && evt == EVT_R_PRESS) {
+  // Stop on the instant the button is pressed, not on release - EVT_R_DOWN
+  // fires there, unlike every other screen's release-triggered EVT_R_PRESS.
+  // The matching release still fires EVT_R_PRESS afterward; suppress that
+  // one so it doesn't also get read as "Again" and restart the round.
+  if (tbState == TB_RUNNING && evt == EVT_R_DOWN) {
     int dist = abs((int)tbPos - tbTargetCenter);
     int coins = 0;
     const char *rank;
@@ -291,9 +296,16 @@ static bool tbHandleEvent(ButtonEvent evt) {
     snprintf(tbMsg, sizeof(tbMsg), "%s +%dc", rank, coins);
     markSaveDirty();
     checkAchievements();
+    tbSuppressNextRelease = true;
     tbState = TB_RESULT;
   } else if (tbState == TB_RESULT && evt == EVT_R_PRESS) {
+    if (tbSuppressNextRelease) { tbSuppressNextRelease = false; return false; }
     tbBegin();
+  } else if (evt == EVT_R_HOLD) {
+    // A stop-press held past HOLD_MS never generates the matching release
+    // event at all (input.cpp withholds it once a hold has fired), so a
+    // pending suppression would otherwise never get cleared.
+    tbSuppressNextRelease = false;
   }
   return false;
 }
@@ -324,7 +336,7 @@ static void tbRender() {
   if (tbState == TB_RUNNING) {
     drawHintBar("-", "Stop");
   } else {
-    drawPixelTextC(s, tbMsg, SCREEN_W / 2, tbTrackBottom + 8, 2, Pal::GOLD, Pal::INK);
+    drawPixelTextC(s, tbMsg, SCREEN_W / 2, tbTrackBottom + 6, 1, Pal::GOLD, Pal::INK);
     drawHintBar("-", "Again");
   }
 }
@@ -446,8 +458,15 @@ static void slotRender() {
     drawPanelTitled(s, 12, UI_CONTENT_Y + 48, SCREEN_W - 24, 78, "CHOOSE MODE");
     drawPixelTextC(s, slotAutoMode ? "AUTO" : "MANUAL", SCREEN_W / 2,
                    UI_CONTENT_Y + 76, 2, slotAutoMode ? Pal::GREEN_ACCENT : Pal::GOLD, Pal::INK);
-    drawPixelTextC(s, slotAutoMode ? "Reels stop themselves" : "Stop each reel with L",
-                   SCREEN_W / 2, UI_CONTENT_Y + 101, 1, Pal::PAPER, Pal::INK);
+    // Split into two short lines - the full sentence is wider than the
+    // "CHOOSE MODE" panel (and even the screen) at size 1.
+    if (slotAutoMode) {
+      drawPixelTextC(s, "Reels stop", SCREEN_W / 2, UI_CONTENT_Y + 101, 1, Pal::PAPER, Pal::INK);
+      drawPixelTextC(s, "themselves", SCREEN_W / 2, UI_CONTENT_Y + 112, 1, Pal::PAPER, Pal::INK);
+    } else {
+      drawPixelTextC(s, "Stop each reel", SCREEN_W / 2, UI_CONTENT_Y + 101, 1, Pal::PAPER, Pal::INK);
+      drawPixelTextC(s, "with L", SCREEN_W / 2, UI_CONTENT_Y + 112, 1, Pal::PAPER, Pal::INK);
+    }
     drawHintBar("Change", "Confirm");
     return;
   }

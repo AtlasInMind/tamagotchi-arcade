@@ -21,8 +21,12 @@ void inputBegin() {
   pinMode(PIN_R, INPUT); // external pull-up on board; INPUT_PULLUP has no effect on GPIO35
 }
 
-// Updates one button's debounced state and returns a press/hold event, if any.
-static ButtonEvent processButton(ButtonState &b, ButtonEvent pressEvt, ButtonEvent holdEvt) {
+// Updates one button's debounced state and returns a press/hold/down event,
+// if any. downEvt fires immediately on the press transition (pass EVT_NONE
+// for buttons that don't need it); pressEvt still fires separately on the
+// matching release, unchanged.
+static ButtonEvent processButton(ButtonState &b, ButtonEvent pressEvt, ButtonEvent holdEvt,
+                                  ButtonEvent downEvt) {
   int raw = digitalRead(b.pin);
   unsigned long now = millis();
 
@@ -37,6 +41,7 @@ static ButtonEvent processButton(ButtonState &b, ButtonEvent pressEvt, ButtonEve
       // Just became pressed.
       b.pressStartTime = now;
       b.holdFired = false;
+      return downEvt;
     } else {
       // Just released.
       if (!b.holdFired) {
@@ -54,7 +59,7 @@ static ButtonEvent processButton(ButtonState &b, ButtonEvent pressEvt, ButtonEve
 }
 
 ButtonEvent inputPoll() {
-  ButtonEvent e = processButton(lBtn, EVT_L_PRESS, EVT_L_HOLD);
+  ButtonEvent e = processButton(lBtn, EVT_L_PRESS, EVT_L_HOLD, EVT_NONE);
   if (e != EVT_NONE) return e;
-  return processButton(rBtn, EVT_R_PRESS, EVT_R_HOLD);
+  return processButton(rBtn, EVT_R_PRESS, EVT_R_HOLD, EVT_R_DOWN);
 }

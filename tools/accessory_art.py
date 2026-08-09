@@ -134,12 +134,15 @@ ACCESSORIES = [
     {
         "name": "Knit Scarf",
         "anchor": "chest",
-        "anchor_row": 23,
+        # Same window as the leather pack/capes (catRow = 20 + ay), so the
+        # wrap sits down on the chest with real clearance below the chin
+        # instead of butting straight into it.
+        "anchor_row": 3,
         "dx": 0,
         # Hanging tail sits behind the body, off to one side, well clear
         # of the front neck wrap so it never touches the face.
         "back": layer(
-            lambda c: stamp(c, 19, 15, [
+            lambda c: stamp(c, 19, 4, [
                 "OOOOO",
                 "OOOOO",
                 "OOOOO",
@@ -152,13 +155,15 @@ ACCESSORIES = [
                 "..O..",
             ]),
         ),
-        # Neck wrap sits just below the head, narrower than the face so it
-        # never spills onto the cheeks.
+        # A rounded collar that dips into a V at the front, with a small
+        # knot below it - not a flat bar butting against the chin.
         "front": layer(
-            lambda c: stamp(c, 10, 22, [
+            lambda c: stamp(c, 10, 4, [
+                "OO.....OO",
+                "oOO...OOo",
                 "OOOOOOOOO",
-                "OOOOOOOOO",
-                "OOOoooOOO",
+                "..ooOoo..",
+                "...OoO...",
             ]),
         ),
     },

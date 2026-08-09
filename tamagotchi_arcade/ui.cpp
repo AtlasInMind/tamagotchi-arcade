@@ -10,7 +10,26 @@ void uiBegin() {
   tft.setRotation(SCREEN_ROTATION);
   tft.fillScreen(Pal::BG);
   spr.setColorDepth(16);
-  spr.createSprite(SCREEN_W, SCREEN_H);
+  void *buf = spr.createSprite(SCREEN_W, SCREEN_H);
+  if (!buf) {
+    delay(50);
+    buf = spr.createSprite(SCREEN_W, SCREEN_H); // one retry for transient allocation pressure
+  }
+  if (!buf) {
+    // No framebuffer exists, so every later draw call would write through a
+    // null pointer. Nothing past this point can safely run - report directly
+    // on the panel (bypassing the sprite entirely, which is why this is the
+    // one place in the app that draws to `tft` instead of `spr`) and restart.
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextSize(1);
+    tft.setCursor(4, 4);
+    tft.println("Display memory error.");
+    tft.println("Restarting...");
+    Serial.println("FATAL: sprite allocation failed, restarting");
+    delay(3000);
+    ESP.restart();
+  }
   spr.setTextDatum(TL_DATUM);
 }
 

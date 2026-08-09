@@ -1,8 +1,16 @@
 #include <Preferences.h>
+#include <nvs_flash.h>
 #include "save.h"
+#include "gfx.h"
 
 static Preferences prefs;
 static const char *NS = "tama";
+
+// False if NVS could not be opened even after one erase+retry (see
+// saveBegin()) - the game then runs entirely in-memory for the session
+// instead of silently discarding every write. saveNow() is the sole
+// guard point; saveTick()/saveFlushNow() call through it.
+static bool saveAvailable = true;
 
 GameData game;
 
@@ -23,7 +31,23 @@ static void applyDefaults() {
 }
 
 void saveBegin() {
-  prefs.begin(NS, false);
+  saveAvailable = prefs.begin(NS, false);
+  if (!saveAvailable) {
+    // Most common real-world cause: NVS partition never formatted, or
+    // corrupted by a partition-table change. One erase+reinit retry
+    // recovers from both.
+    Serial.println("NVS begin() failed, erasing and retrying once...");
+    nvs_flash_erase();
+    nvs_flash_init();
+    saveAvailable = prefs.begin(NS, false);
+  }
+  if (!saveAvailable) {
+    Serial.println("NVS unavailable - progress will not be saved this session.");
+    applyDefaults();
+    toastShow("Save unavailable", "Progress won't persist", Pal::RED_ACCENT);
+    return; // game.created stays false -> normal character-creation flow still runs
+  }
+
   if (!prefs.getBool("init", false)) {
     applyDefaults();
     saveNow();
@@ -82,6 +106,7 @@ void saveBegin() {
 }
 
 void saveNow() {
+  if (!saveAvailable) return;
   prefs.putUInt("coins", game.coins);
   prefs.putUInt("xp", game.xp);
   prefs.putUShort("level", game.level);

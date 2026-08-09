@@ -289,122 +289,36 @@ void drawHat(TFT_eSprite &spr, int anchorX, int anchorY, int scale, int hatIndex
 }
 
 // ---------------------------------------------------------------------------
-// Accessories. Most anchor at (chestX, chestY) = top of the chest, dy
-// positive going down. Glasses/sunglasses anchor at (faceX, faceY) instead
-// - the eye row - so they always sit exactly on the eyes.
+// Accessories. Each item is two explicit, hand-authored layers on the same
+// PREMIUM_ACC_W x PREMIUM_ACC_H canvas (see tools/accessory_art.py): a back
+// layer drawn before the cat and a front layer drawn after it. Placement is
+// fully table-driven - PREMIUM_ACC_ANCHOR_FACE selects the face anchor
+// (chest otherwise), PREMIUM_ACC_ANCHOR_ROW is the canvas row that lands on
+// the anchor, and PREMIUM_ACC_DX is a small per-item horizontal nudge. There
+// is no runtime row-cropping or per-item special casing left here; changing
+// an item's placement or art means editing tools/accessory_art.py and
+// regenerating, not editing this function.
 // ---------------------------------------------------------------------------
 static void drawPremiumAccessoryLayer(TFT_eSprite &spr, int chestX, int chestY,
                                       int faceX, int faceY, int scale,
                                       int accIndex, bool frontLayer) {
   if (accIndex <= 0 || accIndex >= ACCESSORY_COUNT) return;
-  bool faceItem = accIndex == 3 || accIndex == 5;
+  int i = accIndex - 1;
+  bool faceItem = pgm_read_byte(&PREMIUM_ACC_ANCHOR_FACE[i]) != 0;
   int anchorX = faceItem ? faceX : chestX;
-  int x0 = anchorX - (PREMIUM_ACC_W * scale) / 2;
-  int y0 = 0;
-  switch (accIndex) {
-    case 1: y0 = chestY - 20 * scale; break;
-    case 2: y0 = chestY - 14 * scale; break;
-    case 3: y0 = faceY - 21 * scale; break;
-    case 4: y0 = chestY - 14 * scale; break;
-    case 5: y0 = faceY - 22 * scale; break;
-    case 6: x0 += 10 * scale; y0 = chestY - 18 * scale; break;
-    case 7: y0 = chestY - 12 * scale; break;
-    case 8: y0 = chestY - 8 * scale; break;
-    case 9: y0 = chestY - 7 * scale; break;
-  }
-
-  // Let the hanging end of the scarf peek out beside the body while its
-  // neck wrap remains centred on the cat.
-  if (!frontLayer && accIndex == 4) x0 += 4 * scale;
-
-  int firstRow = 0, lastRow = PREMIUM_ACC_H;
-  if (!frontLayer) {
-    if (accIndex != 4 && accIndex != 6 && accIndex != 8 && accIndex != 9) return;
-  } else {
-    if (accIndex == 6) return;                  // backpack is entirely behind
-    if (accIndex == 4) { firstRow = 12; lastRow = 18; } // scarf neck wrap only
-    if (accIndex == 8 || accIndex == 9) {
-      // The broad source-image collar belongs behind the head. A compact
-      // clasp is authored here so the cape attaches cleanly at the chest.
-      uint16_t cloth = accIndex == 8 ? 0xB9C7 : 0x04BF;
-      spr.fillRect(chestX - 2 * scale, chestY - 2 * scale,
-                   5 * scale, 2 * scale, cloth);
-      spr.fillRect(chestX, chestY - 2 * scale, scale, scale, 0xF5ED);
-      return;
-    }
-  }
-
-  for (int py = firstRow; py < lastRow; py++) {
-    for (int px = 0; px < PREMIUM_ACC_W; px++) {
-      uint16_t color = pgm_read_word(PREMIUM_ACCESSORIES[accIndex - 1] + py * PREMIUM_ACC_W + px);
-      if (color == 0) continue;
-      spr.fillRect(x0 + px * scale, y0 + py * scale, scale, scale, color);
-    }
-  }
+  int anchorY = faceItem ? faceY : chestY;
+  int8_t dx = (int8_t)pgm_read_byte(&PREMIUM_ACC_DX[i]);
+  uint8_t anchorRow = pgm_read_byte(&PREMIUM_ACC_ANCHOR_ROW[i]);
+  int x0 = anchorX - (PREMIUM_ACC_W * scale) / 2 + dx * scale;
+  int y0 = anchorY - anchorRow * scale;
+  const uint16_t *pixels = frontLayer ? PREMIUM_ACC_FRONT[i] : PREMIUM_ACC_BACK[i];
+  drawPremiumBitmap(spr, pixels, PREMIUM_ACC_W, PREMIUM_ACC_H, x0, y0, scale, true);
 }
 
 void drawAccessory(TFT_eSprite &spr, int chestX, int chestY, int faceX, int faceY, int scale, int accIndex) {
-  if (accIndex == 0) return;
-  if (accIndex > 0 && accIndex < ACCESSORY_COUNT) {
-    drawPremiumAccessoryLayer(spr, chestX, chestY, faceX, faceY, scale, accIndex, false);
-    drawPremiumAccessoryLayer(spr, chestX, chestY, faceX, faceY, scale, accIndex, true);
-    return;
-  }
-  auto pxAt = [&](int originX, int originY, int dx, int dy, int w, int h, uint16_t color) {
-    spr.fillRect(originX + dx * scale, originY + dy * scale, w * scale, h * scale, color);
-  };
-  auto px = [&](int dx, int dy, int w, int h, uint16_t color) { pxAt(chestX, chestY, dx, dy, w, h, color); };
-  auto pxFace = [&](int dx, int dy, int w, int h, uint16_t color) { pxAt(faceX, faceY, dx, dy, w, h, color); };
-
-  switch (accIndex) {
-    case 1: // Bowtie
-      px(-2, 0, 2, 2, TFT_RED);
-      px(1, 0, 2, 2, TFT_RED);
-      px(0, 0, 1, 2, shade(TFT_RED, -0.4f));
-      break;
-    case 2: // Necklace
-      spr.drawFastHLine(chestX - 5 * scale, chestY, 10 * scale, TFT_GOLD);
-      px(-1, 1, 2, 2, 0x2D9F);
-      break;
-    case 3: // Glasses - anchored at eye level
-      pxFace(-6, 0, 3, 2, TFT_BLACK);
-      pxFace(3, 0, 3, 2, TFT_BLACK);
-      pxFace(-3, 0, 6, 1, TFT_BLACK);
-      break;
-    case 4: // Scarf
-      px(-5, 0, 11, 2, TFT_ORANGE);
-      px(4, 1, 2, 3, TFT_ORANGE);
-      break;
-    case 5: // Sunglasses - anchored at eye level
-      pxFace(-6, 0, 3, 2, shade(TFT_BLACK, 0.15f));
-      pxFace(3, 0, 3, 2, shade(TFT_BLACK, 0.15f));
-      pxFace(-3, 0, 6, 1, TFT_BLACK);
-      break;
-    case 6: // Backpack
-      px(4, -1, 4, 6, 0x8B0E);
-      px(4, 0, 4, 1, shade(0x8B0E, -0.3f));
-      break;
-    case 7: // Medal
-      spr.drawFastVLine(chestX - 2 * scale, chestY - 4 * scale, 4 * scale, TFT_YELLOW);
-      spr.drawFastVLine(chestX + 2 * scale, chestY - 4 * scale, 4 * scale, TFT_YELLOW);
-      px(-3, 0, 6, 3, TFT_GOLD);
-      px(-1, 1, 2, 1, TFT_YELLOW);
-      break;
-    case 8: // Cape
-      px(-6, -1, 3, 8, 0x8000);
-      px(4, -1, 3, 8, 0x8000);
-      px(-6, -1, 12, 1, shade(0x8000, -0.3f));
-      break;
-    case 9: // Royal Cape (premium: gold trim, bigger)
-      px(-7, -1, 4, 9, 0x8000);
-      px(4, -1, 4, 9, 0x8000);
-      px(-7, -1, 14, 1, TFT_GOLD);
-      px(-7, 7, 4, 1, TFT_GOLD);
-      px(4, 7, 4, 1, TFT_GOLD);
-      break;
-    default:
-      break;
-  }
+  if (accIndex <= 0 || accIndex >= ACCESSORY_COUNT) return;
+  drawPremiumAccessoryLayer(spr, chestX, chestY, faceX, faceY, scale, accIndex, false);
+  drawPremiumAccessoryLayer(spr, chestX, chestY, faceX, faceY, scale, accIndex, true);
 }
 
 // ---------------------------------------------------------------------------

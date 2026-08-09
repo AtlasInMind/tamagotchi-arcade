@@ -1,7 +1,10 @@
 # 002 – Redraw all accessories on the target canvas
 
 **Priority:** P0
-**Status:** Open ([tracked on GitHub](../../../issues))
+**Status:** Resolved. All nine accessories are hand-drawn directly on the
+28×26 canvas in `tools/accessory_art.py`, no longer cropped from
+`cosmetics_style_guide.png`. Further visual polish is welcome but the
+montage-cropping path is gone.
 **Depends on:** 001
 
 ## Problem

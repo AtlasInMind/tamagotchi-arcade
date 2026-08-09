@@ -1,7 +1,11 @@
 # 001 – Replace row-cropping with explicit accessory layers
 
 **Priority:** P0
-**Status:** Open ([tracked on GitHub](../../../issues))
+**Status:** Resolved. Accessories are now defined as explicit back/front
+layers in `tools/accessory_art.py`, generated into `PREMIUM_ACC_BACK` /
+`PREMIUM_ACC_FRONT`, and drawn by a single table-driven
+`drawPremiumAccessoryLayer()` in `art.cpp` with no per-item runtime logic.
+See `docs/ART_PIPELINE.md` for the current model.
 
 ## Problem
 

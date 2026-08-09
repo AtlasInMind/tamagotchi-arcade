@@ -40,9 +40,11 @@ A cosmetic change is done when:
 
 ## Current technical debt
 
-Accessories come from fixed crops of `cosmetics_style_guide.png`. They're
-scaled, chroma-keyed, and placed into one flat 28×26 sprite per item.
-`art.cpp` then tries to create depth with item-specific row selections. This
-is why scarves and capes can look clipped or unnatural. Don't spend more time
-fine-tuning row numbers; carry out the explicit-layers and redraw work
-tracked in the open issues instead.
+Accessories are now hand-authored back/front layers defined in
+`tools/accessory_art.py` (see `docs/ART_PIPELINE.md`), not montage crops -
+issues 001 and 002 are resolved. Placement metadata (anchor, anchor row, dx)
+and the pixel data for each layer are still hardcoded per item rather than
+driven by one shared manifest with hats too; that consolidation is tracked
+as issue 003. If a placement looks wrong, fix it in `accessory_art.py` and
+regenerate - never re-introduce row cropping or per-item logic in
+`drawPremiumAccessoryLayer()`.

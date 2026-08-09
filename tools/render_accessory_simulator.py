@@ -1,4 +1,10 @@
-"""Render exact compiled accessory arrays on the compiled cat sprite."""
+"""Render exact compiled accessory arrays on the compiled cat sprite.
+
+Placement is read entirely from the generated header (PREMIUM_ACC_BACK/FRONT
+plus the PREMIUM_ACC_ANCHOR_* metadata) - this file duplicates no per-item
+offsets, row ranges, or layer rules. If a placement or layer looks wrong
+here, the fix belongs in tools/accessory_art.py, not in this script.
+"""
 from pathlib import Path
 import re
 from PIL import Image, ImageDraw
@@ -30,12 +36,19 @@ def read_arrays():
     assets = ASSET_HEADER.read_text()
     palette = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]+)", body(cat, "CAT_SPRITE_PALETTE"))]
     frames = [int(v) for v in re.findall(r"\b\d+\b", body(cat, "CAT_SPRITE_FRAMES"))]
-    accessories = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]+)", body(assets, "PREMIUM_ACCESSORIES"))]
-    assert len(accessories) == 9 * ACC_W * ACC_H
-    return palette, frames[:CAT_W * CAT_H], accessories
+    back = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]+)", body(assets, "PREMIUM_ACC_BACK"))]
+    front = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]+)", body(assets, "PREMIUM_ACC_FRONT"))]
+    anchor_face = [int(v) for v in re.findall(r"\d+", body(assets, "PREMIUM_ACC_ANCHOR_FACE"))]
+    anchor_row = [int(v) for v in re.findall(r"\d+", body(assets, "PREMIUM_ACC_ANCHOR_ROW"))]
+    dx = [int(v) for v in re.findall(r"-?\d+", body(assets, "PREMIUM_ACC_DX"))]
+    n = len(anchor_face)
+    assert len(back) == n * ACC_W * ACC_H
+    assert len(front) == n * ACC_W * ACC_H
+    assert len(anchor_row) == n and len(dx) == n
+    return palette, frames[:CAT_W * CAT_H], back, front, anchor_face, anchor_row, dx
 
 
-def render(palette, cat, accessories, index):
+def render(palette, cat, back, front, anchor_face, anchor_row, dx, index):
     out = Image.new("RGBA", (CELL_W, CELL_H), rgba565(0x10C5))
     cat_x, cat_y = 9, 15
     chest_x, chest_y = cat_x + 15, cat_y + 23
@@ -48,62 +61,39 @@ def render(palette, cat, accessories, index):
                 if p:
                     out.putpixel((cat_x + x, cat_y + y), rgba565(palette[p]))
 
-    def draw_acc(front_layer):
+    def draw_acc(frames, front_layer):
         if not index:
             return
-        face_item = index in (3, 5)
-        x = (face_x if face_item else chest_x) - ACC_W // 2
-        if index == 1: y = chest_y - 20
-        elif index == 2: y = chest_y - 14
-        elif index == 3: y = face_y - 21
-        elif index == 4: y = chest_y - 14
-        elif index == 5: y = face_y - 22
-        elif index == 6: x += 10; y = chest_y - 18
-        elif index == 7: y = chest_y - 12
-        elif index == 8: y = chest_y - 8
-        else: y = chest_y - 7
-        if not front_layer and index == 4:
-            x += 4
-        first_row, last_row = 0, ACC_H
-        if not front_layer:
-            if index not in (4, 6, 8, 9):
-                return
-        else:
-            if index == 6:
-                return
-            if index == 4:
-                first_row, last_row = 12, 18
-            elif index in (8, 9):
-                cloth = 0xB9C7 if index == 8 else 0x04BF
-                for py in range(2):
-                    for px in range(5):
-                        out.putpixel((chest_x - 2 + px, chest_y - 2 + py), rgba565(cloth))
-                out.putpixel((chest_x, chest_y - 2), rgba565(0xF5ED))
-                return
-
-        offset = (index - 1) * ACC_W * ACC_H
-        for py in range(first_row, last_row):
+        i = index - 1
+        face_item = anchor_face[i]
+        anchor_x = face_x if face_item else chest_x
+        anchor_y = face_y if face_item else chest_y
+        x0 = anchor_x - ACC_W // 2 + dx[i]
+        y0 = anchor_y - anchor_row[i]
+        offset = i * ACC_W * ACC_H
+        for py in range(ACC_H):
             for px in range(ACC_W):
-                value = accessories[offset + py * ACC_W + px]
+                value = frames[offset + py * ACC_W + px]
                 if value:
-                    ox, oy = x + px, y + py
+                    ox, oy = x0 + px, y0 + py
                     if 0 <= ox < CELL_W and 0 <= oy < CELL_H:
                         out.putpixel((ox, oy), rgba565(value))
 
-    draw_acc(False)
+    draw_acc(back, False)
     draw_cat()
-    draw_acc(True)
+    draw_acc(front, True)
     return out
 
 
 def main():
-    palette, cat, accessories = read_arrays()
+    palette, cat, back, front, anchor_face, anchor_row, dx = read_arrays()
     label_h = 16
     sheet = Image.new("RGBA", (CELL_W * 5 * UPSCALE, CELL_H * 2 * UPSCALE + label_h * 2), rgba565(0x10C5))
     draw = ImageDraw.Draw(sheet)
     for i, name in enumerate(NAMES):
         col, row = i % 5, i // 5
-        image = render(palette, cat, accessories, i).resize((CELL_W * UPSCALE, CELL_H * UPSCALE), Image.Resampling.NEAREST)
+        image = render(palette, cat, back, front, anchor_face, anchor_row, dx, i).resize(
+            (CELL_W * UPSCALE, CELL_H * UPSCALE), Image.Resampling.NEAREST)
         x = col * CELL_W * UPSCALE
         y = row * (CELL_H * UPSCALE + label_h)
         sheet.alpha_composite(image, (x, y))

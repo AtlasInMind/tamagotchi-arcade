@@ -12,12 +12,17 @@ The cat's five expressions come from
 removes the connected background, maps colors onto a fixed palette, and
 writes RGB565-compatible data to `tamagotchi_arcade/cat_sprites.h`.
 
-Hats, accessories, backgrounds, slot symbols, and items mostly come from two
-larger style sheets. `tools/generate_premium_assets.py` uses fixed
-coordinates, scales the motifs, removes the green chroma background,
-converts to RGB565, and writes `tamagotchi_arcade/premium_assets.h`. The
-beanie and straw hat have their own redesign files that override the
-corresponding crops.
+Hats, backgrounds, slot symbols, and items come from two larger style sheets.
+`tools/generate_premium_assets.py` uses fixed coordinates, scales the
+motifs, removes the green chroma background, converts to RGB565, and writes
+`tamagotchi_arcade/premium_assets.h`. The beanie and straw hat have their own
+redesign files that override the corresponding crops.
+
+Accessories are the one exception: they are **not** cropped from a montage.
+They're authored directly in `tools/accessory_art.py` as explicit back/front
+pixel-art layers on a shared 28×26 canvas (see "How accessories are built"
+below); `generate_premium_assets.py` just flattens them into the same header
+alongside the montage-derived assets.
 
 In the firmware, `drawPet()` in `tamagotchi_arcade/art.cpp` draws layers in
 this order:
@@ -29,10 +34,6 @@ this order:
 5. sleep indicators.
 
 Hats can hide the ears entirely or have specific ear pixels redrawn on top.
-Accessories currently use item-specific placements and row selections.
-Scarves, backpacks, and capes have back layers; the scarf has a limited front
-neck layer, the backpack is entirely behind, and capes get a small
-program-drawn clasp in front.
 
 ## How the art is tested
 
@@ -45,37 +46,44 @@ inspection.
 This is better than checking the style sheet alone, because errors from
 cropping, color mapping, and transparency become visible. The simulator is
 still limited: it currently only shows the neutral cat in one fur variant and
-duplicates some layout rules from C++.
+doesn't yet cover the full expression/fur/pattern matrix (issue 004).
 
-## Why accessories still look unnatural
+## How accessories are built
 
-The sources are finished illustrations on one large montage sheet, not
-hand-drawn 28×26 sprites with semantic layers. A single flat sprite contains
-both what should be in front and what should be behind the cat. Horizontal
-cropping cannot describe shapes like scarf tails, shoulder straps, and capes
-in a natural way. Chroma-keying an anti-aliased image can also leave fringe
-colors at the edges.
+Each accessory in `tools/accessory_art.py` is two independent pixel grids -
+`back` and `front` - on the same `CANVAS_W x CANVAS_H` canvas, plus three
+placement fields: `anchor` (`"chest"` or `"face"`), `anchor_row` (which
+canvas row lands on the anchor), and `dx` (a small horizontal nudge). Both
+layers are generated straight into `PREMIUM_ACC_BACK`/`PREMIUM_ACC_FRONT`
+alongside `PREMIUM_ACC_ANCHOR_FACE`/`_ROW` and `PREMIUM_ACC_DX`, and
+`drawPremiumAccessoryLayer()` in `art.cpp` is pure table lookup - no
+per-item `switch`, no row ranges, no special cases. The simulator reads the
+same arrays, so there is exactly one source of truth for placement.
 
-The long-term solution is separate, pixel-edited layers per accessory:
+Because each layer has its own local canvas, a "back" piece (a cape's cloth,
+a scarf's hanging tail, a backpack's bag) can be positioned anywhere in that
+28×26 space independently of the "front" piece (a clasp, a knot, a strap) -
+no shared offset hacks are needed to pull them apart.
 
-- `back`: fabric, straps, or volume that sits behind the cat;
-- `front`: knot, collar, clasp, or lens that actually sits in front;
-- optionally an explicit mask if part of the cat should be hidden.
+To add or adjust an accessory:
 
-The layers should share the same canvas, anchor, and palette, and the
-generator should read all metadata from one manifest that's also used by the
-simulator and the firmware.
+1. Edit its entry in `tools/accessory_art.py`. `stamp()` paints an ASCII
+   grid at an offset; `rect()` fills a block; use `layer(...)` to combine
+   several stamps into one canvas.
+2. Run `python3 tools/generate_premium_assets.py` - it validates canvas
+   size and unknown glyphs and fails loudly.
+3. Run `python3 tools/render_accessory_simulator.py` and inspect
+   `art_reference/accessory_v2_simulation.png`.
+4. Compile the firmware (see `README.md`).
 
-## Recommended workflow going forward
+## Recommended workflow for hats and other montage-derived assets
 
-1. Pick one issue and one accessory at a time.
-2. Draw back/front sprites directly on the target canvas; don't crop a
-   montage.
-3. Regenerate the headers.
-4. Render the full test matrix in the simulator.
-5. Check transparency and silhouette at high zoom.
-6. Compile the firmware.
-7. Only flash after an approved simulator sheet, and compare the physical
+1. Pick one issue at a time.
+2. Regenerate the headers after any style-sheet or crop-box change.
+3. Render the full test matrix in the simulator.
+4. Check transparency and silhouette at high zoom.
+5. Compile the firmware.
+6. Only flash after an approved simulator sheet, and compare the physical
    screen against the simulator.
 
 See the [open issues](../../issues) for order and acceptance criteria.

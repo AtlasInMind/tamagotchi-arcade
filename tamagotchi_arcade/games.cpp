@@ -89,7 +89,7 @@ static void bjSettle() {
     reportHighScore(GAME_ID_BLACKJACK, winnings);
     if (winnings >= 100) unlockAchievement(ACH_BIG_WIN);
   }
-  saveNow();
+  markSaveDirty();
   checkAchievements();
   bjState = BJ_RESULT;
 }
@@ -187,7 +187,7 @@ void highLowCashOut() {
     hlStreak = 0;
     hlShowMsg = true;
     hlMsgUntil = millis() + 900;
-    saveNow();
+    markSaveDirty();
   }
 }
 
@@ -221,7 +221,7 @@ static bool hlHandleEvent(ButtonEvent evt) {
   hlSuit = nextSuit;
   hlShowMsg = true;
   hlMsgUntil = millis() + 900;
-  saveNow();
+  markSaveDirty();
   checkAchievements();
   return false;
 }
@@ -286,7 +286,7 @@ static bool tbHandleEvent(ButtonEvent evt) {
       particlesSpawnBurst(SCREEN_W / 2, tbTargetCenter, Pal::GOLD, coins / 3);
     }
     snprintf(tbMsg, sizeof(tbMsg), "%s +%dc", rank, coins);
-    saveNow();
+    markSaveDirty();
     checkAchievements();
     tbState = TB_RESULT;
   } else if (tbState == TB_RESULT && evt == EVT_R_PRESS) {
@@ -378,7 +378,7 @@ static void slotSettle() {
   }
   addXP(8);
   bumpHappiness(5);
-  saveNow();
+  markSaveDirty();
   checkAchievements();
   slotState = SLOT_RESULT;
 }
@@ -531,7 +531,7 @@ static void simonEndRound(bool success) {
     reportHighScore(GAME_ID_SIMON, round);
     if (round >= 10) unlockAchievement(ACH_SIMON_ROUND10);
     snprintf(simonMsg, sizeof(simonMsg), "Round %d! +%dc", round, coins);
-    saveNow();
+    markSaveDirty();
     checkAchievements();
     simonState = SIMON_RESULT;
   }

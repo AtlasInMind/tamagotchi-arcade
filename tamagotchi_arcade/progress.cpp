@@ -40,7 +40,7 @@ void unlockAchievement(AchievementId id) {
   if (id < 0 || id >= ACH_COUNT) return;
   if (game.achievements & (1UL << id)) return; // already unlocked
   game.achievements |= (1UL << id);
-  saveNow();
+  markSaveDirty();
   toastShow("Achievement!", ACHIEVEMENTS[id].name, Pal::GOLD);
 }
 

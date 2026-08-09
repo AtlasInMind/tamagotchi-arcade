@@ -104,6 +104,28 @@ void saveNow() {
   prefs.putUChar("furcolor", game.furColor);
 }
 
+static bool dirty = false;
+static unsigned long lastFlushMs = 0;
+static const unsigned long SAVE_DEBOUNCE_MS = 3000;
+
+void markSaveDirty() {
+  dirty = true;
+}
+
+void saveTick() {
+  if (!dirty || millis() - lastFlushMs < SAVE_DEBOUNCE_MS) return;
+  saveNow();
+  dirty = false;
+  lastFlushMs = millis();
+}
+
+void saveFlushNow() {
+  if (!dirty) return;
+  saveNow();
+  dirty = false;
+  lastFlushMs = millis();
+}
+
 void saveResetProgress() {
   applyDefaults(); // sets created=false, so this also re-triggers character creation
   saveNow();

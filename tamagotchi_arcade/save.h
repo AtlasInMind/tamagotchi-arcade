@@ -49,9 +49,19 @@ struct GameData {
 extern GameData game;
 
 void saveBegin();          // loads from NVS (transparently upgrades older saves) or initializes defaults
-void saveNow();             // writes current `game` to NVS
+void saveNow();             // writes current `game` to NVS unconditionally
 void saveResetProgress();   // wipes save, resets `game` to defaults (created=false), writes it
 void markCreated(uint8_t furColor); // completes character creation, persists immediately
+
+// Debounced persistence: gameplay code should call markSaveDirty() after
+// mutating `game` instead of saveNow() directly. saveTick() (called once per
+// loop() iteration) flushes to NVS on a timer so rapid-fire actions (e.g.
+// mashing the slot machine) collapse into one write instead of one per
+// action. saveFlushNow() bypasses the timer for deliberate checkpoints
+// (quitting a game, going idle) without forcing a write if nothing changed.
+void markSaveDirty();
+void saveTick();
+void saveFlushNow();
 
 int xpForNextLevel(int level);
 void addXP(uint32_t amount);

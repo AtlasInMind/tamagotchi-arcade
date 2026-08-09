@@ -84,9 +84,14 @@ static unsigned long lastFrameMs = 0;
 static float gDt = 0.016f; // seconds since last frame, for ambient background effects
 static unsigned long lastInteractionMs = 0;
 static const unsigned long SLEEP_AFTER_MS = 120000;
+static bool wasAsleep = false;
+
+static bool isAsleepNow() {
+  return millis() - lastInteractionMs >= SLEEP_AFTER_MS;
+}
 
 static PetExpression moodExpression() {
-  if (millis() - lastInteractionMs >= SLEEP_AFTER_MS) return EXPR_ASLEEP;
+  if (isAsleepNow()) return EXPR_ASLEEP;
   if (blinking) return EXPR_BLINK;
   if (game.happiness >= 70) return EXPR_HAPPY;
   if (game.happiness < 35) return EXPR_SAD;
@@ -152,7 +157,7 @@ static void handlePopupEvent(ButtonEvent evt) {
     popupOpen = false;
     switch (action) {
       case ACT_CANCEL: break;
-      case ACT_QUIT_GAME: saveNow(); changeState(ST_ARCADE_LIST); break;
+      case ACT_QUIT_GAME: saveFlushNow(); changeState(ST_ARCADE_LIST); break;
       case ACT_CASHOUT: highLowCashOut(); break;
       case ACT_RECORDS: recordsPage = 0; changeState(ST_RECORDS); break;
       case ACT_RESET: changeState(ST_CONFIRM_RESET); break;
@@ -396,6 +401,14 @@ void loop() {
   handleEvent(evt);
 
   tickPlaytimeAndDecay();
+
+  // Flush once on the awake->asleep transition - a natural "user walked
+  // away" checkpoint - in addition to saveTick()'s regular debounce timer.
+  bool asleepNow = isAsleepNow();
+  if (asleepNow && !wasAsleep) saveFlushNow();
+  wasAsleep = asleepNow;
+  saveTick();
+
   if (state == ST_HOME) tickHomeAnimation();
   if (state == ST_GAME) gameTick();
   particlesTick(gDt);

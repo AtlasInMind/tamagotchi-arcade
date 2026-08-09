@@ -84,7 +84,7 @@ bool shopHandleEvent(ButtonEvent evt) {
         snprintf(statusMsg, sizeof(statusMsg), "Equipped!");
       }
     }
-    saveNow();
+    markSaveDirty();
     if (mode == SHOP_MODE_CLOSET) rebuildCells();
     statusUntil = millis() + 900;
   }

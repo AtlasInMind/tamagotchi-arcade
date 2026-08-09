@@ -260,7 +260,10 @@ static int tbTrackTop, tbTrackBottom;
 static void tbBegin() {
   tbState = TB_RUNNING;
   tbTrackTop = UI_CONTENT_Y + 20;
-  tbTrackBottom = SCREEN_H - UI_BOTTOM_H - 20;
+  // Leave enough room below the track for the size-2 result message
+  // (~16px tall) drawn at tbTrackBottom + 8 in tbRender() - a 20px margin
+  // let it spill into the hint bar; 36px keeps it inside the content area.
+  tbTrackBottom = SCREEN_H - UI_BOTTOM_H - 36;
   tbPos = tbTrackTop;
   tbSpeed = 90.0f + game.level * 4.0f;
   tbLastMs = millis();
@@ -321,7 +324,7 @@ static void tbRender() {
   if (tbState == TB_RUNNING) {
     drawHintBar("-", "Stop");
   } else {
-    drawPixelTextC(s, tbMsg, SCREEN_W / 2, tbTrackBottom + 12, 2, Pal::GOLD, Pal::INK);
+    drawPixelTextC(s, tbMsg, SCREEN_W / 2, tbTrackBottom + 8, 2, Pal::GOLD, Pal::INK);
     drawHintBar("-", "Again");
   }
 }

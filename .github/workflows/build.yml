@@ -1,0 +1,33 @@
+name: Build firmware
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install arduino-cli
+        uses: arduino/setup-arduino-cli@v1
+
+      - name: Install esp32 core
+        run: |
+          arduino-cli config init
+          arduino-cli config set board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.11
+
+      - name: Install libraries
+        run: arduino-cli lib install "TFT_eSPI"
+
+      # Keep these flags identical to the ones documented in README.md /
+      # docs/HARDWARE.md - this job exists specifically to catch the two
+      # drifting apart (issue #18).
+      - name: Compile
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32 \
+            --build-property "compiler.cpp.extra_flags=-DUSER_SETUP_LOADED=1 -DST7789_DRIVER=1 -DTFT_SDA_READ=1 -DTFT_WIDTH=135 -DTFT_HEIGHT=240 -DCGRAM_OFFSET=1 -DTFT_MOSI=19 -DTFT_SCLK=18 -DTFT_CS=5 -DTFT_DC=16 -DTFT_RST=23 -DTFT_BL=4 -DTFT_BACKLIGHT_ON=HIGH -DSPI_FREQUENCY=40000000 -DSPI_READ_FREQUENCY=6000000 -DLOAD_GLCD=1" \
+            tamagotchi_arcade

@@ -5,6 +5,8 @@
 // R (GPIO35) = Select / Confirm (press)
 
 #include <Arduino.h>
+#include <esp_sleep.h>
+#include <esp_timer.h>
 #include "input.h"
 #include "gfx.h"
 #include "ui.h"
@@ -90,6 +92,57 @@ static bool isAsleepNow() {
   return millis() - lastInteractionMs >= SLEEP_AFTER_MS;
 }
 
+// ---------------------------------------------------------------------------
+// Offline/elapsed-time model.
+//
+// This board has no battery-backed RTC chip and no WiFi/NTP, so there is no
+// wall-clock source that survives a real power loss (unplug, dead battery) -
+// on a true power-on reset these RTC_DATA_ATTR values come back zeroed and
+// we correctly fall back to "no catch-up, just resume". What we *do* have is
+// the RTC domain that stays powered across deep sleep, so instead of only
+// dimming the screen after a long idle we deep-sleep the chip: the sleep
+// interval is then real elapsed time we can measure with esp_timer_get_time()
+// (its base carries across deep sleep) and use to dock happiness for the time
+// the pet was left alone, the way the neglect mechanic works on real
+// Tamagotchi hardware. A soft reset (crash/watchdog/EN button) is not a deep
+// sleep wake, so it's treated the same as a power loss: no catch-up.
+//
+// Only the R button (GPIO35) is wired as the wake source. GPIO0 (L) is this
+// board's flash/boot-strap pin - holding it low at reset time (which is what
+// waking would require) risks dropping the board into UART download mode
+// instead of booting the app, so it's deliberately never used for wakeup.
+static const unsigned long DEEP_SLEEP_AFTER_MS = 300000; // 5 minutes idle
+RTC_DATA_ATTR static int64_t rtcSleepStartUs = 0;
+RTC_DATA_ATTR static bool rtcHasSleepSnapshot = false;
+
+// Applies happiness decay for time spent deep-asleep, at the same rate as
+// the online decay in tickPlaytimeAndDecay() (1 point/minute). Sets
+// *wokeFromSleep so the caller can tell a real resume from a fresh/power-loss
+// boot, and returns the elapsed offline seconds (0 when *wokeFromSleep is
+// false, or when the sleep was too short to matter).
+static unsigned long applyOfflineCatchUp(bool *wokeFromSleep) {
+  *wokeFromSleep = rtcHasSleepSnapshot &&
+      esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;
+  rtcHasSleepSnapshot = false; // consume the snapshot so a later soft reset can't reapply it
+  if (!*wokeFromSleep) return 0;
+
+  int64_t elapsedUs = esp_timer_get_time() - rtcSleepStartUs;
+  if (elapsedUs < 0) return 0; // defensive; esp_timer's base should only move forward
+  unsigned long elapsedSec = (unsigned long)(elapsedUs / 1000000);
+  int decayPoints = (int)(elapsedSec / 60);
+  if (decayPoints > 0) bumpHappiness(-decayPoints);
+  return elapsedSec;
+}
+
+static void enterDeepSleepIfIdle() {
+  if (millis() - lastInteractionMs < DEEP_SLEEP_AFTER_MS) return;
+  saveFlushNow();
+  rtcSleepStartUs = esp_timer_get_time();
+  rtcHasSleepSnapshot = true;
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_R, 0); // wake on R going LOW (pressed)
+  esp_deep_sleep_start(); // never returns; next boot re-enters setup()
+}
+
 static PetExpression moodExpression() {
   if (isAsleepNow()) return EXPR_ASLEEP;
   if (blinking) return EXPR_BLINK;
@@ -139,7 +192,19 @@ void setup() {
   particlesReset();
   lastInteractionMs = millis();
 
-  state = game.created ? ST_SPLASH : ST_CREATE_COLOR;
+  bool wokeFromSleep = false;
+  unsigned long offlineSec = game.created ? applyOfflineCatchUp(&wokeFromSleep) : 0;
+  if (wokeFromSleep) {
+    if (offlineSec >= 60) {
+      markSaveDirty();
+      char line2[32];
+      snprintf(line2, sizeof(line2), "Away %lum - happiness dipped", offlineSec / 60);
+      toastShow("Welcome back", line2, Pal::GOLD);
+    }
+    state = ST_HOME; // skip the splash screen on a wake, it's not a fresh boot
+  } else {
+    state = game.created ? ST_SPLASH : ST_CREATE_COLOR;
+  }
 
   Serial.printf("Loaded save: coins=%u xp=%u level=%u happiness=%u furColor=%d created=%d achievements=%d/%d\n",
                 game.coins, game.xp, game.level, game.happiness, game.furColor, game.created,
@@ -408,6 +473,8 @@ void loop() {
   if (asleepNow && !wasAsleep) saveFlushNow();
   wasAsleep = asleepNow;
   saveTick();
+
+  enterDeepSleepIfIdle(); // no-op until far past asleepNow's own threshold
 
   if (state == ST_HOME) tickHomeAnimation();
   if (state == ST_GAME) gameTick();
